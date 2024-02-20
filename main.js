@@ -66,7 +66,7 @@ bot.on('text', async msg => {
             await adminRequest(msg.chat.id, 0, 0)
         } else if (msg.text === 'Завершенные запросы' && usersWithMenu.includes(msg.chat.id)){          //Все закрытые запросы для админа
             await adminRequest(msg.chat.id, 0, 1)
-        } else if (msg.text === 'Сделать рассылку' && usersWithMenu.includes(msg.chat.id)){          //Все закрытые запросы для админа
+        } else if (msg.text === 'Сделать рассылку' && usersWithMenu.includes(msg.chat.id)){             //Все закрытые запросы для админа
             await makeNewsletter()
         } else if (msg.text === '✏ Создать запрос'){
             surveyStates.set(msg.chat.id, true);                                                             //Создание запроса для пользователя
