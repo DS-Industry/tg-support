@@ -480,7 +480,7 @@ async function requestHistory(chatId, userId){
 async function menuRequest(chatId, text){
     const sql = 'SELECT * FROM request WHERE client_id = $1 AND id = $2';
     await connection.query(sql, [chatId, text], async (err, result) => {
-        if (result.rows) {
+        if (result.rows.length > 0) {
             const formattedDate = await formatDate(result.rows[0].date);
             const messageText = `<b>Номер запроса:</b> ${result.rows[0].id}\n<b>Статус: </b>${result.rows[0].status}\n<b>Дата создания: </b>${formattedDate}\n<b>Тип проблемы: </b>${result.rows[0].type}\n<b>Описание: </b>${result.rows[0].description}\n`;
             await sendMessageWithRetry(chatId, messageText);
