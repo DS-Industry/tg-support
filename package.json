@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "babel-node main --presets=env"
+    "start": "babel-node src/main --presets=env"
   },
   "keywords": [],
   "author": "",
