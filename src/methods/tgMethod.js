@@ -42,12 +42,19 @@ class TgMethod {
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+    //Добавление медиа в БД
+    async addMedia(owner_id, type, url, filling){
+        const sql = 'INSERT INTO media(owner_id, type, url, filling) VALUES($1, $2, $3, $4)';
+        await connection.query(sql, [owner_id, type, url, filling], async (err) => {
+            if (err) console.log(err);
+        });
+    }
     //Отправка фото пользователю
-    async sendPhoto(chatId, requestId, status){
+    async sendMedia(chatId, requestId, status){
         console.log(chatId, requestId, status)
-        const sqlPhoto = 'SELECT * FROM photo WHERE owner_id = $1 AND type = $2';
-        const photoResults = await new Promise(async (resolve, reject) => {
-            await connection.query(sqlPhoto, [requestId, status], async (err, results) => {
+        const sqlMedia = 'SELECT * FROM media WHERE owner_id = $1 AND type = $2';
+        const mediaResults = await new Promise(async (resolve, reject) => {
+            await connection.query(sqlMedia, [requestId, status], async (err, results) => {
                 console.log(results)
                 if (err) {
                     reject(err);
@@ -56,9 +63,23 @@ class TgMethod {
                 }
             });
         });
-        if (photoResults.rows.length > 0) {
-            await bot.sendPhoto(chatId, photoResults.rows[0].url, { caption: "Приложенное фото." });
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+        if (mediaResults.rows.length > 0) {
+            if(mediaResults.rows[0].filling === 'photo') {
+                await bot.sendPhoto(chatId, mediaResults.rows[0].url, {caption: "Приложенное фото."});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+            } else if(mediaResults.rows[0].filling === 'doc') {
+                await bot.sendDocument(chatId, mediaResults.rows[0].url, {caption: "Приложенный документ."});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+            } else if(mediaResults.rows[0].filling === 'video') {
+                await bot.sendVideo(chatId, mediaResults.rows[0].url, {caption: "Приложенное видео."});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+            } else if(mediaResults.rows[0].filling === 'videoNote') {
+                await bot.sendVideo(chatId, mediaResults.rows[0].url, {caption: "Приложенное видеосообщение."});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+            } else if(mediaResults.rows[0].filling === 'voice') {
+                await bot.sendVoice(chatId, mediaResults.rows[0].url, {caption: "Приложенное голосовое сообщение."});
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Задержка в миллисекундах
+            }
         }
     }
 }

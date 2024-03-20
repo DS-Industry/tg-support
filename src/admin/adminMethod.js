@@ -47,6 +47,7 @@ class AdminMethod {
                             item.status,
                             item.client_name,
                             item.type,
+                            item.address,
                             item.description,
                             item.client_username,
                             item.date,
@@ -82,12 +83,12 @@ class AdminMethod {
         });
     }
     //Отображение обращения на стороне администратора
-    async showAdminRequest(chatId, requestId, status, clientName, type, description, clientUsername, date, tgMethod) {
+    async showAdminRequest(chatId, requestId, status, clientName, type, address, description, clientUsername, date, tgMethod) {
         const formattedDate = await tgMethod.formatDate(date);
-        const messageText = `<b>Номер запроса:</b> ${requestId}\n<b>Тип проблемы: </b>${type}\n<b>Дата создания: </b>${formattedDate}\n<b>Статус: </b>${status}\n<b>Имя клиента: </b>${clientName}\n<b>Ник клиента: </b>${clientUsername}\n<b>Описание: </b>${description}\n`;
+        const messageText = `<b>Номер запроса:</b> ${requestId}\n<b>Тип проблемы: </b>${type}\n<b>Дата создания: </b>${formattedDate}\n<b>Статус: </b>${status}\n<b>Имя клиента: </b>${clientName}\n<b>Ник клиента: </b>${clientUsername}\n<b>Адрес мойки: </b>${address}\n<b>Описание: </b>${description}\n`;
 
         await tgMethod.sendMessageWithRetry(chatId, messageText);
-        await tgMethod.sendPhoto(chatId, requestId, "request");
+        await tgMethod.sendMedia(chatId, requestId, "request");
 
         await this.menuAdminRequest(chatId, requestId, status);
     }
@@ -110,11 +111,10 @@ class AdminMethod {
                 `Выберите действие для запроса ${text}:`, {
                     reply_markup: {
                         inline_keyboard: [
-                            [
-                                {text: 'Добавить комментарий', callback_data: `addComment:${text}`}],
+                            [{text: 'Добавить комментарий', callback_data: `addComment:${text}`}],
                             [{text: 'Посмотреть все комментарии', callback_data: `historyComment:${text}`}],
-                            [{text: 'Изменить статус запроса', callback_data: `changeAdminStatus:${text}`}
-                            ]
+                            //[{text: 'Изменить статус запроса', callback_data: `changeAdminStatus:${text}`}],
+                            [{text: 'Закрыть запрос', callback_data: `closeAdminStatus:${text}`}]
                         ]
                     }
                 }
@@ -126,7 +126,7 @@ class AdminMethod {
         const sql = 'SELECT * FROM REQUEST WHERE ID = $1';
         await connection.query(sql, [request_id], async (err, result) => {
             await tgMethod.sendMessageWithRetry(chatId, `<b>Добавлен новый запрос:</b>`);
-            await this.showAdminRequest(chatId, request_id, result.rows[0].status, result.rows[0].client_name, result.rows[0].type, result.rows[0].description, result.rows[0].client_username, result.rows[0].date, tgMethod);
+            await this.showAdminRequest(chatId, request_id, result.rows[0].status, result.rows[0].client_name, result.rows[0].type, result.rows[0].address, result.rows[0].description, result.rows[0].client_username, result.rows[0].date, tgMethod);
         });
     }
     //Создает рассылку по всем клиентам, которые отправляли сообщения
@@ -177,6 +177,7 @@ class AdminMethod {
                         row.status,
                         row.client_name,
                         row.type,
+                        row.address,
                         row.description,
                         row.client_username,
                         row.date,
@@ -217,6 +218,25 @@ class AdminMethod {
             }
         }
         bot.on('message', protectionStatus);
+    }
+    //Изменение статуса запроса для админа на "Закрыто"
+    async closeStatusRequest(chatId, requestId, tgMethod, clientMethod){
+        const sql = 'UPDATE request SET status = $1 WHERE id = $2 ';
+        await connection.query(sql, ['Закрыто', requestId], async (err) => {
+            if (err) {
+                console.log(err);
+            }
+            await tgMethod.sendMessageWithRetry(chatId, `<i>Статус изменен</i>`);
+            await clientMethod.changeCommunicationMode(requestId, 0)
+            const sqlClient = 'SELECT client_id FROM request WHERE id = $1';
+            await connection.query(sqlClient, [requestId], async (err, result) => {
+                if (err) {
+                    console.log(err);
+                }
+                const clientID = result.rows[0].client_id;
+                await tgMethod.sendMessageWithRetry(clientID, `<i>Оператор перевел обращение ${requestId} в статус завершенных. Режим общения закрыт для данного запроса.</i>`);
+            });
+        });
     }
 
 }

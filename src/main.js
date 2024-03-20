@@ -3,7 +3,6 @@ import ClientMethod from "./client/clientMethod";
 import AdminMethod from "./admin/adminMethod";
 import bot from "./methods/connection";
 import connection from "./db";
-import axios from "axios";
 import moment from "moment-timezone";
 
 const tgMethod = new TgMethod();
@@ -12,13 +11,13 @@ const adminMethod = new AdminMethod();
 
 require('dotenv').config();
 
-const BITRIX_URL = process.env.BITRIX_URL;
+//const BITRIX_URL = process.env.BITRIX_URL;
 const usersWithMenu = [Number(process.env.ADMIN)];
 let surveyStates = new Map();
 
 connection.query('CREATE TABLE IF NOT EXISTS MESSAGE (ID SERIAL PRIMARY KEY, REQUEST_ID INTEGER, SENDER TEXT, DATE TIMESTAMP, TEXT TEXT)');
-connection.query('CREATE TABLE IF NOT EXISTS REQUEST (ID SERIAL PRIMARY KEY, CLIENT_ID TEXT, DATE TIMESTAMP, STATUS TEXT, TYPE TEXT, DESCRIPTION TEXT, CLIENT_NAME TEXT, CLIENT_USERNAME TEXT, COMMUNICATION_MODE INTEGER)');
-connection.query('CREATE TABLE IF NOT EXISTS PHOTO (ID SERIAL PRIMARY KEY, OWNER_ID INTEGER, TYPE TEXT, URL TEXT)');
+connection.query('CREATE TABLE IF NOT EXISTS REQUEST (ID SERIAL PRIMARY KEY, CLIENT_ID TEXT, DATE TIMESTAMP, STATUS TEXT, TYPE TEXT, ADDRESS TEXT, DESCRIPTION TEXT, CLIENT_NAME TEXT, CLIENT_USERNAME TEXT, COMMUNICATION_MODE INTEGER)');
+connection.query('CREATE TABLE IF NOT EXISTS MEDIA (ID SERIAL PRIMARY KEY, OWNER_ID INTEGER, TYPE TEXT, URL TEXT, FILLING TEXT)');
 
 bot.on("polling_error", err => console.log(err.data.error.message));
 const commands = [
@@ -37,7 +36,7 @@ const commands = [
 bot.setMyCommands(commands);
 
 //Обработчик входящих сообщений
-bot.on('text', async msg => {
+bot.on('message', async msg => {
     try {
         if(msg.text === '/start') {                                                                     //Запуск
             if (usersWithMenu.includes(msg.chat.id)){                                                   //Проверка на статус админ
@@ -67,9 +66,9 @@ bot.on('text', async msg => {
             const ch = await clientMethod.getCommunicationMode(msg.chat.id)
             if(ch !== 0){await clientMethod.changeCommunicationMode(ch, 0)}
             await clientMethod.addRequestType(msg.chat.id);
-        }else if (msg.text === '📋 Посмотреть предыдущие запросы'){                                      //Просмотр всех предыдущих запрсов для данного пользователя
+        } else if (msg.text === '📋 Посмотреть предыдущие запросы'){                                      //Просмотр всех предыдущих запрсов для данного пользователя
             await requestHistory(msg.chat.id, msg.from.id);
-        }else if (msg.chat.id === usersWithMenu[0] && tgMethod.isNumeric(msg.text)){                     //Поиск конкретного запроса по id для админа
+        } else if (msg.chat.id === usersWithMenu[0] && tgMethod.isNumeric(msg.text)){                     //Поиск конкретного запроса по id для админа
             await adminMethod.searchRequestById(msg.chat.id, msg.text, tgMethod);
         }else if (msg.chat.id !== usersWithMenu[0] && !surveyStates.get(msg.chat.id) && !tgMethod.isNumeric(msg.text)){
             const ch = await clientMethod.getCommunicationMode(msg.chat.id)
@@ -82,20 +81,6 @@ bot.on('text', async msg => {
         console.log(error);
     }
 })
-bot.on('photo', async msg => {
-    try {
-        if (msg.chat.id !== usersWithMenu[0] && !surveyStates.get(msg.chat.id)){
-            const ch = await clientMethod.getCommunicationMode(msg.chat.id)
-            if(ch === 0){
-                await tgMethod.sendMessageWithRetry(msg.chat.id, `<i>В данный момент вы не находитесь в режиме общения. Выберите активный запрос или создайте новый.</i>`)
-            } else {await communicationMode(msg.chat.id, ch, msg)}
-        }
-    }
-    catch(error) {
-        console.log(error);
-    }
-})
-
 //Обработчик кнопок
 bot.on('callback_query', async (callbackQuery) => {
     const action = callbackQuery.data;
@@ -113,24 +98,20 @@ bot.on('callback_query', async (callbackQuery) => {
         await adminMethod.adminRequest(callbackQuery.message.chat.id, data[1], data[2], tgMethod);
     } else if (action[0] === 'r' && action[7] === 'T') {                                                 //Дополнение информации по обращнию для пользователя
         const data = callbackQuery.data.split(':');
-        await addRequestDescription(callbackQuery.message.chat.id, data[1]);
+        await addRequestAddress(callbackQuery.message.chat.id, data[1]);
     } else if (action[0] === 'c' && action[13] === 'M') {                                                //Включение режима общения для клиента
         const data = callbackQuery.data.split(':');
         await clientMethod.onCommunicationMode(callbackQuery.message.chat.id, data[1], tgMethod);
-    } else if (action[0] === 'c' && action[6] === 'A' && action[11] === 'S') {                            //Изменение статуса запроса для админа
+    }/* else if (action[0] === 'c' && action[6] === 'A' && action[11] === 'S') {                            //Изменение статуса запроса для админа
         const data = callbackQuery.data.split(':');
         await adminMethod.changeStatusRequest(callbackQuery.message.chat.id, data[1], tgMethod, clientMethod);
+    }*/ else if (action[0] === 'c' && action[5] === 'A' && action[10] === 'S') {                            //Изменение статуса запроса для админа на "Закрыто"
+        const data = callbackQuery.data.split(':');
+        await adminMethod.closeStatusRequest(callbackQuery.message.chat.id, data[1], tgMethod, clientMethod);
     }
 });
-//Добавление фото в БД
-async function addPhoto(owner_id, type, url){
-    const sql = 'INSERT INTO photo(owner_id, type, url) VALUES($1, $2, $3)';
-    await connection.query(sql, [owner_id, type, url], async (err) => {
-        if (err) console.log(err);
-    });
-}
-//Создание обращения
-async function addRequestDescription(chatId, typeRequest){
+//Добавление адреса обращения
+async function addRequestAddress(chatId, typeRequest){
     let data = [];
     if (typeRequest === '1'){
         data.push('Технические неполадки')
@@ -139,6 +120,20 @@ async function addRequestDescription(chatId, typeRequest){
     } else {
         data.push('Прочее')
     }
+    await tgMethod.sendMessageWithRetry(chatId, `Напишите адрес вашей автомойки. Обязательно укажите город, улицу и дом🌏`);
+    const addAddress = async (msg) => {
+        if (msg.chat.id === chatId) {
+            data.push(msg.text);
+            bot.removeListener('message', addAddress);
+            await addRequestDescription(chatId, data)
+        } else {
+            console.log("Ожидание нужного пользователя для добавления адреса.")
+        }
+    }
+    bot.on('message', addAddress);
+}
+//Создание обращения
+async function addRequestDescription(chatId, data){
     await tgMethod.sendMessageWithRetry(chatId, `Подробно опишите проблему, при необходимости прикрепите фотографию📷`);
     const protectionReq = async (msg) => {
         if (msg.chat.id === chatId) {
@@ -148,18 +143,35 @@ async function addRequestDescription(chatId, typeRequest){
                 } else {
                     data.push('Добавлено только фото.')
                 }
+            } else if (msg.document) {
+                if (msg.caption !== undefined) {
+                    data.push(msg.caption)
+                } else {
+                    data.push('Добавлен только документ.')
+                }
+            } else if (msg.video) {
+                if (msg.caption !== undefined) {
+                    data.push(msg.caption)
+                } else {
+                    data.push('Добавлено только видео.')
+                }
+            } else if (msg.video_note) {
+                data.push('Добавлено только видеосообщение.')
+            } else if (msg.voice) {
+                data.push('Добавлено только голосовое сообщение.')
             } else {
                 data.push(msg.text)
             }
             const currentDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
             const currentHour = moment().tz('Europe/Moscow').hours();
-            const sql = 'INSERT INTO REQUEST (client_id, date, status, type, description, client_name, client_username, communication_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id';
+            const sql = 'INSERT INTO REQUEST (client_id, date, status, type, address, description, client_name, client_username, communication_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id';
             const values = [
                 msg.chat.id,
                 currentDate,
                 "В процессе",
                 data[0],
                 data[1],
+                data[2],
                 msg.chat.first_name,
                 msg.chat.username,
                 1
@@ -179,15 +191,23 @@ async function addRequestDescription(chatId, typeRequest){
                     await tgMethod.sendMessageWithRetry(msg.chat.id, `Теперь вы находитесь в ожидании ответа по вашему запросу. Все, что напишете сейчас, будет автоматически направлено оператору в качестве дополнительного комментария!\n Для общения по другому запросу переключитесь в меню всех обращений📩`);
 
                     if (msg.photo && msg.photo.length > 0) {
-                        await addPhoto(insertId, 'request', msg.photo[msg.photo.length - 1].file_id);
+                        await tgMethod.addMedia(insertId, 'request', msg.photo[msg.photo.length - 1].file_id, 'photo');
+                    } else if (msg.document) {
+                        await tgMethod.addMedia(insertId, 'request', msg.document.file_id, 'doc');
+                    } else if (msg.video) {
+                        await tgMethod.addMedia(insertId, 'request', msg.video.file_id, 'video');
+                    } else if (msg.video_note) {
+                        await tgMethod.addMedia(insertId, 'request', msg.video_note.file_id, 'videoNote');
+                    } else if (msg.voice) {
+                        await tgMethod.addMedia(insertId, 'request', msg.voice.file_id, 'voice');
                     }
                     surveyStates.delete(msg.chat.id);
                     await adminMethod.addRequestAdmin(usersWithMenu[0], insertId, tgMethod);
-                    try {
+                    /*try {
                         await axios.post(BITRIX_URL + 'tasks.task.add.json?fields[TITLE]=tes12t&fields[RESPONSIBLE_ID]=4480')
                     } catch (error) {
                         console.error('Ошибка при создании задачи в Битрикс24:', error);
-                    }
+                    }*/
                 }
             });
             bot.removeListener('message', protectionReq);
@@ -226,7 +246,7 @@ async function requestHistory(chatId, userId){
 }
 //Отправка комментария
 async function sendComment(chatId, requestId){
-    let photoId = 0;
+    let mediaId = 0;
     await tgMethod.sendMessageWithRetry(chatId, `<i>Добавьте комментарий к запросу ${requestId}:</i> `);
     const protectionSendMes = async (msg) => {
         if (msg.chat.id === chatId) {
@@ -237,6 +257,22 @@ async function sendComment(chatId, requestId){
                 } else {
                     textMsg = 'Добавлено только фото.';
                 }
+            } else if (msg.document) {
+                if (msg.caption !== undefined) {
+                    textMsg = msg.caption
+                } else {
+                    textMsg = 'Добавлен только документ.'
+                }
+            } else if (msg.video) {
+                if (msg.caption !== undefined) {
+                    textMsg = msg.caption
+                } else {
+                    textMsg = 'Добавлено только видео.'
+                }
+            } else if (msg.video_note) {
+                textMsg = 'Добавлено только видеосообщение.'
+            } else if (msg.voice) {
+                textMsg = 'Добавлено только голосовое сообщение.'
             }
             const currentDateTime = moment().tz('Europe/Moscow').format('YYYY-MM-DD HH:mm:ss');
             const sql = 'INSERT INTO message(request_id, sender, date, text) VALUES($1, $2, $3, $4) RETURNING id';
@@ -246,20 +282,28 @@ async function sendComment(chatId, requestId){
                 if (err) {
                     console.log(err);
                 }
-                photoId = result.rows[0].id;
+                mediaId = result.rows[0].id;
                 await tgMethod.sendMessageWithRetry(msg.chat.id, `<i>Комментарий успешно добавлен!</i>`);
                 if (msg.photo && msg.photo.length > 0) {
-                    await addPhoto(photoId, 'comment', msg.photo[msg.photo.length - 1].file_id)
+                    await tgMethod.addMedia(mediaId, 'comment', msg.photo[msg.photo.length - 1].file_id, 'photo')
+                } else if (msg.document) {
+                    await tgMethod.addMedia(mediaId, 'comment', msg.document.file_id, 'doc');
+                } else if (msg.video){
+                    await tgMethod.addMedia(mediaId, 'comment', msg.video.file_id, 'video');
+                } else if (msg.video_note){
+                    await tgMethod.addMedia(mediaId, 'comment', msg.video_note.file_id, 'videoNote');
+                } else if (msg.voice){
+                    await tgMethod.addMedia(mediaId, 'comment', msg.voice.file_id, 'voice');
                 }
                 if (Number(chatId) !== usersWithMenu[0]) {
-                    await addCommentAnswer(usersWithMenu[0], requestId, photoId, textMsg);
+                    await addCommentAnswer(usersWithMenu[0], requestId, mediaId, textMsg);
                 } else {
                     const sqlClient = 'SELECT * FROM request WHERE id = $1';
                     await connection.query(sqlClient, [requestId], async (err, result) => {
                         if (err) {
                             console.log(err);
                         }
-                        await addCommentAnswer(result.rows[0].client_id, requestId, photoId, textMsg)
+                        await addCommentAnswer(result.rows[0].client_id, requestId, mediaId, textMsg)
                     });
                 }
             });
@@ -272,7 +316,7 @@ async function sendComment(chatId, requestId){
 }
 //Режим переписки для клиента
 async function communicationMode(chatId, requestId, msg){
-    let photoId = 0;
+    let mediaId = 0;
         let textMsg = msg.text;
         if (msg.photo && msg.photo.length > 0) {
             if (msg.caption !== undefined){
@@ -280,6 +324,22 @@ async function communicationMode(chatId, requestId, msg){
             } else {
                 textMsg = 'Добавлено только фото.';
             }
+        } else if (msg.document) {
+            if (msg.caption !== undefined) {
+                textMsg = msg.caption
+            } else {
+                textMsg = 'Добавлен только документ.'
+            }
+        } else if (msg.video) {
+            if (msg.caption !== undefined) {
+                textMsg = msg.caption
+            } else {
+                textMsg = 'Добавлено только видео.'
+            }
+        } else if (msg.video_note) {
+            textMsg = 'Добавлено только видеосообщение.'
+        } else if (msg.voice) {
+            textMsg = 'Добавлено только голосовое сообщение.'
         }
         const currentDateTime = moment().tz('Europe/Moscow').format('YYYY-MM-DD HH:mm:ss');
         const sql = 'INSERT INTO message(request_id, sender, date, text) VALUES($1, $2, $3, $4) RETURNING id';
@@ -289,19 +349,27 @@ async function communicationMode(chatId, requestId, msg){
             if (err) {
                 console.log(err);
             }
-            photoId = result.rows[0].id;
+            mediaId = result.rows[0].id;
             if (msg.photo && msg.photo.length > 0) {
-                await addPhoto(photoId, 'comment', msg.photo[msg.photo.length-1].file_id)
+                await tgMethod.addMedia(mediaId, 'comment', msg.photo[msg.photo.length - 1].file_id, 'photo')
+            } else if (msg.document) {
+                await tgMethod.addMedia(mediaId, 'comment', msg.document.file_id, 'doc');
+            } else if (msg.video){
+                await tgMethod.addMedia(mediaId, 'comment', msg.video.file_id, 'video');
+            } else if (msg.video_note){
+                await tgMethod.addMedia(mediaId, 'comment', msg.video_note.file_id, 'videoNote');
+            } else if (msg.voice){
+                await tgMethod.addMedia(mediaId, 'comment', msg.voice.file_id, 'voice');
             }
             if (Number(chatId) !== usersWithMenu[0]) {
-                await addCommentAnswer(usersWithMenu[0], requestId, photoId, textMsg);
+                await addCommentAnswer(usersWithMenu[0], requestId, mediaId, textMsg);
             } else {
                 const sqlClient = 'SELECT client_id FROM request WHERE id = $1';
                 await connection.query(sqlClient, [requestId], async (err, result) => {
                     if (err) {
                         console.log(err);
                     }
-                    await addCommentAnswer(result.rows[0].client_id, requestId, photoId, textMsg)
+                    await addCommentAnswer(result.rows[0].client_id, requestId, mediaId, textMsg)
                 });
             }
         });
@@ -313,7 +381,7 @@ async function addCommentAnswer(chatId, requestId, commentId, text){
         sender = 'Оператор'
     }
     await tgMethod.sendMessageWithRetry(chatId, `<b>${sender} добавил комментарий к запросу ${requestId}:</b>\n <i>${text}</i>`)
-    await tgMethod.sendPhoto(chatId, commentId, "comment");
+    await tgMethod.sendMedia(chatId, commentId, "comment");
     if(sender === 'Клиент') {
         await bot.sendMessage(chatId,
             `Нажмите, чтобы отправить ответ:`, {
@@ -342,7 +410,7 @@ async function viewComment(chatId, request_id){
                 try {
                     const messageText = `<b>${item.date.toLocaleString()}\n ${item.sender}:</b> \n <i>${item.text}</i>`;
                     await tgMethod.sendMessageWithRetry(chatId, messageText);
-                    await tgMethod.sendPhoto(chatId, item.id, "comment");
+                    await tgMethod.sendMedia(chatId, item.id, "comment");
                 } catch (error) {
                     if (error.response && error.response.status === 429 && error.response.status === 428) {
                         delayMs += 1000; // Увеличиваем задержку на 1 секунду при получении ошибки 429

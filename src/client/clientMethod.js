@@ -35,8 +35,9 @@ class ClientMethod {
         await connection.query(sql, [chatId, text], async (err, result) => {
             if (result.rows.length > 0) {
                 const formattedDate = await tgMethod.formatDate(result.rows[0].date);
-                const messageText = `<b>Номер запроса:</b> ${result.rows[0].id}\n<b>Статус: </b>${result.rows[0].status}\n<b>Дата создания: </b>${formattedDate}\n<b>Тип проблемы: </b>${result.rows[0].type}\n<b>Описание: </b>${result.rows[0].description}\n`;
+                const messageText = `<b>Номер запроса:</b> ${result.rows[0].id}\n<b>Статус: </b>${result.rows[0].status}\n<b>Дата создания: </b>${formattedDate}\n<b>Тип проблемы: </b>${result.rows[0].type}\n<b>Адрес мойки: </b>${result.rows[0].address}\n<b>Описание: </b>${result.rows[0].description}\n`;
                 await tgMethod.sendMessageWithRetry(chatId, messageText);
+                await tgMethod.sendMedia(chatId, result.rows[0].id, "request");
                 if (result.rows[0].status !== 'Закрыто'){
                     await bot.sendMessage(chatId,
                         `Выберите свои действия:`, {
