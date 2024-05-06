@@ -62,10 +62,13 @@ bot.on('message', async msg => {
         } else if (msg.text === 'Сделать рассылку' && usersWithMenu.includes(msg.chat.id)){             //Все закрытые запросы для админа
             await adminMethod.makeNewsletter(usersWithMenu[0], clientMethod, tgMethod)
         } else if (msg.text === '✏ Создать запрос'){                                                    //Создание запроса для пользователя
-            surveyStates.set(msg.chat.id, true);
             const ch = await clientMethod.getCommunicationMode(msg.chat.id)
-            if(ch !== 0){await clientMethod.changeCommunicationMode(ch, 0)}
-            await clientMethod.addRequestType(msg.chat.id);
+            if(ch !== 0){
+                await tgMethod.sendMessageWithRetry(msg.chat.id, `<i>У вас уже есть активный запрос. Дополнительную информацию можно оставить в качестве комментария.</i>`)
+            } else {
+                surveyStates.set(msg.chat.id, true);
+                await clientMethod.addRequestType(msg.chat.id);}
+
         } else if (msg.text === '📋 Посмотреть предыдущие запросы'){                                      //Просмотр всех предыдущих запрсов для данного пользователя
             await requestHistory(msg.chat.id, msg.from.id);
         } else if (msg.chat.id === usersWithMenu[0] && tgMethod.isNumeric(msg.text)){                     //Поиск конкретного запроса по id для админа
