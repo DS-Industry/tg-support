@@ -4,6 +4,7 @@ import AdminMethod from "./admin/adminMethod";
 import bot from "./methods/connection";
 import connection from "./db";
 import moment from "moment-timezone";
+import { differenceInDays } from 'date-fns';
 
 const tgMethod = new TgMethod();
 const clientMethod = new ClientMethod();
@@ -67,7 +68,8 @@ bot.on('message', async msg => {
                 await tgMethod.sendMessageWithRetry(msg.chat.id, `<i>У вас уже есть активный запрос. Дополнительную информацию можно оставить в качестве комментария.</i>`)
             } else {
                 surveyStates.set(msg.chat.id, true);
-                await clientMethod.addRequestType(msg.chat.id);}
+                await clientMethod.addRequestType(msg.chat.id);
+            }
 
         } else if (msg.text === '📋 Посмотреть предыдущие запросы'){                                      //Просмотр всех предыдущих запрсов для данного пользователя
             await requestHistory(msg.chat.id, msg.from.id);
@@ -101,7 +103,20 @@ bot.on('callback_query', async (callbackQuery) => {
         await adminMethod.adminRequest(callbackQuery.message.chat.id, data[1], data[2], tgMethod);
     } else if (action[0] === 'r' && action[7] === 'T') {                                                 //Дополнение информации по обращнию для пользователя
         const data = callbackQuery.data.split(':');
-        await addRequestAddress(callbackQuery.message.chat.id, data[1]);
+        const dateMsg = new Date(callbackQuery.message.date * 1000).toISOString().slice(0, 19).replace('T', ' ');
+        const nowMsg = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const daysDifference = differenceInDays(nowMsg, dateMsg);
+        if (daysDifference >= 2) {
+            await tgMethod.sendMessageWithRetry(callbackQuery.message.chat.id, `<i>Данное меню уже не действительно. Создайте новый запрос.</i>`)
+        } else {
+            await bot.deleteMessage(callbackQuery.message.chat.id, callbackQuery.message.message_id);
+            const ch = await clientMethod.getCommunicationMode(callbackQuery.message.chat.id)
+            if (ch !== 0) {
+                await tgMethod.sendMessageWithRetry(callbackQuery.message.chat.id, `<i>У вас уже есть активный запрос. Дополнительную информацию можно оставить в качестве комментария.</i>`)
+            } else {
+                await addRequestAddress(callbackQuery.message.chat.id, data[1]);
+            }
+        }
     } else if (action[0] === 'c' && action[13] === 'M') {                                                //Включение режима общения для клиента
         const data = callbackQuery.data.split(':');
         await clientMethod.onCommunicationMode(callbackQuery.message.chat.id, data[1], tgMethod);
